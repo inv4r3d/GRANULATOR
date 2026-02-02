@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>MONO GRANULATOR [CHAOS ED.]</title>
+    <style>
+        :root {
+            --bg: #000000;
+            --panel: #111111;
+            --border: #333333;
+            --text: #777777;
+            --active: #ffffff;
+            --knob-bg: #222222;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            margin: 0; height: 100vh;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            user-select: none;
+            overflow: hidden; /* Важно для тряски экрана */
+        }
+
+        /* --- LAYOUT --- */
+        .wrapper {
+            display: grid;
+            grid-template-columns: 260px 1fr 260px;
+            gap: 1px;
+            background: var(--border);
+            border: 1px solid var(--border);
+            width: 95vw; height: 90vh;
+            max-width: 1400px;
+        }
+
+        .column {
+            background: var(--bg);
+            display: flex; flex-direction: column;
+            gap: 1px;
+        }
+
+        .module {
+            background: var(--panel);
+            padding: 15px;
+            display: flex; flex-direction: column;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .module:last-child { border-bottom: none; }
+
+        h3 {
+            margin: 0 0 12px 0; font-size: 10px; font-weight: 700; color: var(--active);
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+
+        /* --- VISUALS --- */
+        .visual-column {
+            background: var(--bg);
+            position: relative;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+
+        .canvas-wrapper {
+            flex-grow: 1;
+            background: #050505;
+            position: relative;
+            cursor: crosshair;
+            overflow: hidden;
+        }
+        
+        canvas { width: 100%; height: 100%; display: block; }
+        
+        #scanner {
+            position: absolute; top:0; bottom:0; width: 1px; 
+            background: var(--active);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* --- CONTROLS --- */
+        .control-row {
+            margin-bottom: 10px;
+        }
+        
+        label { 
+            display: flex; justify-content: space-between; 
+            font-size: 9px; margin-bottom: 4px; color: #555; font-weight: bold;
+        }
+        span.val { color: var(--active); }
+        
+        input[type=range] {
+            -webkit-appearance: none; width: 100%; background: transparent; cursor: pointer; display: block; margin: 0;
+        }
+        input[type=range]:focus { outline: none; }
+        
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 2px; background: #333; border-radius: 0;
+        }
+        
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 10px; width: 10px;
+            background: var(--bg); border: 2px solid var(--active);
+            border-radius: 50%; margin-top: -4px;
+            transition: transform 0.1s;
+        }
+        input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.2); background: var(--active); }
+
+        /* --- BUTTONS --- */
+        .btn-row { display: flex; gap: 1px; background: var(--border); margin-top: auto; border-top: 1px solid var(--border); }
+        
+        button {
+            flex: 1; background: var(--panel); border: none; color: #666; 
+            padding: 15px 0; cursor: pointer; font-size: 10px; font-weight: bold; 
+            text-transform: uppercase; letter-spacing: 1px;
+            transition: all 0.2s;
+        }
+        button:hover { background: #222; color: var(--active); }
+        button.active { background: var(--active); color: var(--bg); }
+        
+        button.rec-active { 
+            background: var(--active); color: black; 
+            animation: blink 1s infinite; 
+        }
+        @keyframes blink { 0% {opacity: 1;} 50% {opacity: 0.5;} 100% {opacity: 1;} }
+
+        /* --- OVERLAY --- */
+        #overlay {
+            position: fixed; top:0; left:0; width:100%; height:100%; background: #000;
+            z-index: 999; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .start-btn {
+            border: 1px solid var(--active); padding: 20px 40px; color: var(--active);
+            cursor: pointer; letter-spacing: 2px; text-transform: uppercase; font-size: 12px;
+        }
+        .start-btn:hover { background: var(--active); color: #000; }
+
+        #drop-msg {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #333; pointer-events: none; font-size: 20px; font-weight: bold; letter-spacing: 5px;
+            opacity: 1; transition: opacity 0.5s;
+        }
+        .has-file #drop-msg { opacity: 0; }
+
+    </style>
+</head>
+<body>
+
+<div id="overlay">
+    <div class="start-btn" onclick="initSystem()">INITIALIZE SYSTEM</div>
+</div>
+
+<div class="wrapper" id="drop-area">
+    
+    <!-- LEFT CONTROLS -->
+    <div class="column">
+        <div class="module">
+            <h3>Movement</h3>
+            <div class="control-row">
+                <label>SPEED <span class="val" id="v-speed"></span></label>
+                <input type="range" id="p-speed" min="0" max="50" step="0.1" value="5">
+            </div>
+            <div class="control-row">
+                <label>LFO MOD <span class="val" id="v-lfo"></span></label>
+                <input type="range" id="p-lfo" min="0" max="100" value="10">
+            </div>
+        </div>
+
+        <div class="module">
+            <h3>Granulator</h3>
+            <div class="control-row">
+                <label>SIZE (MS) <span class="val" id="v-size"></span></label>
+                <input type="range" id="p-size" min="10" max="1000" value="150">
+            </div>
+            <div class="control-row">
+                <label>DENSITY <span class="val" id="v-dens"></span></label>
+                <input type="range" id="p-dens" min="5" max="200" value="40">
+            </div>
+            <div class="control-row">
+                <label>SPRAY <span class="val" id="v-spray"></span></label>
+                <input type="range" id="p-spray" min="0" max="100" value="10">
+            </div>
+            <div class="control-row">
+                <label>REVERSE % <span class="val" id="v-rev"></span></label>
+                <input type="range" id="p-rev" min="0" max="100" value="0">
+            </div>
+        </div>
+
+        <!-- NEW CHAOS MODULE -->
+        <div class="module">
+            <h3>Chaos & Distortion</h3>
+            <div class="control-row">
+                <label>DISTORTION <span class="val" id="v-dist"></span></label>
+                <input type="range" id="p-dist" min="0" max="100" value="0">
+            </div>
+            <div class="control-row">
+                <label>GLITCH PROB <span class="val" id="v-glitch"></span></label>
+                <input type="range" id="p-glitch" min="0" max="100" value="0">
+            </div>
+        </div>
+        
+        <!-- Moved PITCH to bottom of left col -->
+        <div class="module" style="flex-grow: 1;">
+            <h3>Pitch</h3>
+            <div class="control-row">
+                <label>RATE <span class="val" id="v-pitch"></span></label>
+                <input type="range" id="p-pitch" min="0.1" max="2.0" step="0.01" value="1.0">
+            </div>
+            <div class="control-row">
+                <label>SUB BASS <span class="val" id="v-sub"></span></label>
+                <input type="range" id="p-sub" min="0" max="100" value="0">
+            </div>
+            <div style="margin-top:10px;">
+                <button id="btn-scale" onclick="toggleScale()" style="width:100%; border:1px solid #333;">SCALE: OFF</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CENTER VISUAL -->
+    <div class="visual-column">
+        <div class="canvas-wrapper" onmousedown="setPos(event)">
+            <div id="drop-msg">DROP AUDIO</div>
+            <canvas id="waveCanvas"></canvas>
+            <div id="scanner"></div>
+        </div>
+        
+        <div class="btn-row">
+            <button id="btn-play" onclick="togglePlay()">PLAY / STOP</button>
+            <button onclick="document.getElementById('fileInput').click()">LOAD FILE</button>
+            <input type="file" id="fileInput" accept="audio/*" style="display:none">
+        </div>
+    </div>
+
+    <!-- RIGHT CONTROLS -->
+    <div class="column">
+        <div class="module">
+            <h3>Filter</h3>
+            <div class="control-row">
+                <label>CUTOFF <span class="val" id="v-cut"></span></label>
+                <input type="range" id="p-cut" min="100" max="20000" step="10" value="20000">
+            </div>
+            <div class="control-row">
+                <label>RESONANCE <span class="val" id="v-res"></span></label>
+                <input type="range" id="p-res" min="0" max="20" value="0">
+            </div>
+        </div>
+
+        <div class="module">
+            <h3>Space</h3>
+            <div class="control-row">
+                <label>STEREO <span class="val" id="v-spread"></span></label>
+                <input type="range" id="p-spread" min="0" max="100" value="100">
+            </div>
+            <div class="control-row">
+                <label>DELAY <span class="val" id="v-delay"></span></label>
+                <input type="range" id="p-delay" min="0" max="60" value="0">
+            </div>
+            <div class="control-row">
+                <label>REVERB <span class="val" id="v-verb"></span></label>
+                <input type="range" id="p-verb" min="0" max="100" value="30">
+            </div>
+        </div>
+
+        <div class="module" style="flex-grow: 1; justify-content: flex-end;">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div style="font-size: 9px; color: #444;">WAV RECORDER</div>
+                <button id="btn-rec" onclick="toggleRec()" style="width:100%; margin-top:5px; border:1px solid #333;">● RECORD</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // --- GLOBAL VARS ---
+    let actx;
+    let mainBuffer = null;
+    let isPlaying = false;
+    let scanPos = 0; 
+    let nextGrainTime = 0;
+    
+    // Nodes
+    let masterNode, filterNode, delayNode, delayFb, delayWet, verbNode, verbGain, subOsc, subGain;
+    let distNode, analyser; // New Nodes
+    let recorderNode; 
+
+    // Recording State
+    let isRecording = false;
+    let recLeft = [], recRight = [], recLength = 0;
+
+    // Params Cache
+    const p = {};
+    let useScale = false;
+    const scaleRatios = [1.0, 1.189, 1.334, 1.498, 1.781, 2.0];
+
+    // --- SYSTEM INIT ---
+    async function initSystem() {
+        if(!actx) {
+            actx = new (window.AudioContext || window.webkitAudioContext)();
+            setupGraph();
+            createNoiseBuffer();
+            requestAnimationFrame(drawLoop);
+            scheduler();
+        } else {
+            actx.resume();
+        }
+        document.getElementById('overlay').style.display = 'none';
+        updateUI();
+    }
+
+    function setupGraph() {
+        // Master
+        masterNode = actx.createGain();
+        masterNode.gain.value = 0.8;
+        masterNode.connect(actx.destination);
+
+        // Analyser (For Visual Animation)
+        analyser = actx.createAnalyser();
+        analyser.fftSize = 256;
+        masterNode.connect(analyser);
+
+        // Distortion (WaveShaper)
+        distNode = actx.createWaveShaper();
+        distNode.curve = makeDistortionCurve(0);
+        distNode.oversample = '4x';
+
+        // Filter
+        filterNode = actx.createBiquadFilter();
+        filterNode.frequency.value = 20000;
+        
+        // Chain: Dist -> Filter -> Master (dry) & FX
+        distNode.connect(filterNode);
+        filterNode.connect(masterNode);
+
+        // Sub Bass
+        subOsc = actx.createOscillator();
+        subOsc.frequency.value = 60;
+        subOsc.start();
+        subGain = actx.createGain();
+        subGain.gain.value = 0;
+        subOsc.connect(subGain);
+        subGain.connect(masterNode);
+
+        // FX: Delay
+        delayNode = actx.createDelay();
+        delayNode.delayTime.value = 0.3;
+        delayFb = actx.createGain();
+        delayFb.gain.value = 0.4;
+        delayWet = actx.createGain();
+        delayWet.gain.value = 0;
+        
+        filterNode.connect(delayNode);
+        delayNode.connect(delayFb);
+        delayFb.connect(delayNode);
+        delayNode.connect(delayWet);
+        delayWet.connect(masterNode);
+
+        // FX: Reverb
+        verbNode = actx.createConvolver();
+        verbNode.buffer = createImpulse(2.0);
+        verbGain = actx.createGain();
+        verbGain.gain.value = 0;
+        
+        filterNode.connect(verbNode);
+        verbNode.connect(verbGain);
+        verbGain.connect(masterNode);
+
+        // RECORDER
+        recorderNode = actx.createScriptProcessor(4096, 2, 2);
+        masterNode.connect(recorderNode);
+        const mute = actx.createGain();
+        mute.gain.value = 0;
+        recorderNode.connect(mute);
+        mute.connect(actx.destination);
+
+        recorderNode.onaudioprocess = (e) => {
+            if (!isRecording) return;
+            const l = e.inputBuffer.getChannelData(0);
+            const r = e.inputBuffer.getChannelData(1);
+            recLeft.push(new Float32Array(l));
+            recRight.push(new Float32Array(r));
+            recLength += l.length;
+        };
+    }
+
+    function makeDistortionCurve(amount) {
+        const k = amount; 
+        const n_samples = 44100;
+        const curve = new Float32Array(n_samples);
+        const deg = Math.PI / 180;
+        
+        if(amount === 0) {
+            for (let i = 0; i < n_samples; ++i) curve[i] = (i / n_samples) * 2 - 1;
+        } else {
+            for (let i = 0; i < n_samples; ++i) {
+                const x = (i * 2) / n_samples - 1;
+                curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
+            }
+        }
+        return curve;
+    }
+
+    // --- ENGINE LOGIC ---
+
+    function scheduler() {
+        if(isPlaying && mainBuffer) {
+            const now = actx.currentTime;
+            while(nextGrainTime < now + 0.1) {
+                spawnGrain(nextGrainTime);
+                nextGrainTime += (p.density / 1000);
+            }
+            // Move Scanner
+            const speed = (p.speed / 10000);
+            const lfo = Math.sin(now) * (p.lfo / 100) * 0.1;
+            scanPos += speed;
+            if(scanPos > 1) scanPos = 0;
+            
+            if(p.sub > 0 && subOsc) subOsc.frequency.setTargetAtTime(50 * p.pitch, now, 0.1);
+        } else {
+            if(actx) nextGrainTime = actx.currentTime;
+        }
+        setTimeout(scheduler, 25);
+    }
+
+    function spawnGrain(time) {
+        const dur = mainBuffer.duration;
+        const now = actx.currentTime;
+        const lfo = Math.sin(time) * (p.lfo / 100) * 0.2;
+
+        let pos = scanPos + lfo;
+        pos += (Math.random() - 0.5) * (p.spray / 1000); 
+
+        if(pos < 0) pos += 1;
+        if(pos > 1) pos -= 1;
+
+        let offset = pos * dur;
+        let gSize = p.size / 1000; // secs
+        let rate = p.pitch;
+
+        // --- GLITCH LOGIC ---
+        let glitching = false;
+        if (Math.random() * 100 < p.glitch) {
+            glitching = true;
+            // Chaos parameters
+            const r = Math.random();
+            if(r < 0.33) rate *= 4; // Octave up high
+            else if(r < 0.66) rate *= 0.25; // Slow down
+            else rate = Math.random() * 2 - 1; // Crazy pitch
+            
+            gSize = 0.01 + (Math.random() * 0.05); // Short stutters
+        }
+        // --------------------
+
+        if(offset > dur - gSize) offset = dur - gSize;
+        if(offset < 0) offset = 0;
+
+        // Scale Logic (ignored if glitching)
+        if(useScale && !glitching) {
+            let closest = scaleRatios[0];
+            let min = 999;
+            scaleRatios.forEach(r => {
+                let diff = Math.abs(rate - r);
+                if(diff < min) { min=diff; closest=r; }
+            });
+            rate = closest;
+        }
+
+        // Reverse
+        if(Math.random() * 100 < p.rev) {
+            rate = -rate;
+            offset += gSize;
+        }
+
+        const src = actx.createBufferSource();
+        src.buffer = mainBuffer;
+        src.playbackRate.value = rate;
+
+        const env = actx.createGain();
+        const pan = actx.createStereoPanner();
+
+        src.connect(env);
+        env.connect(pan);
+        // Connect grain to Distortion Node
+        pan.connect(distNode);
+
+        pan.pan.value = (Math.random()*2 - 1) * (p.spread/100);
+
+        env.gain.setValueAtTime(0, time);
+        env.gain.linearRampToValueAtTime(0.5, time + (gSize * 0.1));
+        env.gain.linearRampToValueAtTime(0, time + gSize);
+
+        src.start(time, offset, gSize);
+        src.stop(time + gSize + 0.1);
+    }
+
+    // --- UI UPDATES ---
+
+    function updateUI() {
+        const get = (id) => parseFloat(document.getElementById(id).value);
+        const txt = (id, val) => document.getElementById(id).innerText = val;
+
+        p.speed = get('p-speed'); txt('v-speed', p.speed);
+        p.lfo = get('p-lfo'); txt('v-lfo', p.lfo + '%');
+        p.size = get('p-size'); txt('v-size', p.size);
+        p.dens = get('p-dens'); txt('v-dens', p.dens + 'ms'); p.density = p.dens; 
+        p.spray = get('p-spray'); txt('v-spray', p.spray + '%');
+        p.rev = get('p-rev'); txt('v-rev', p.rev + '%');
+        p.pitch = get('p-pitch'); txt('v-pitch', p.pitch.toFixed(2));
+        p.sub = get('p-sub'); txt('v-sub', p.sub + '%');
+        p.cut = get('p-cut'); txt('v-cut', p.cut + 'Hz');
+        p.res = get('p-res'); txt('v-res', p.res);
+        p.spread = get('p-spread'); txt('v-spread', p.spread + '%');
+        p.delay = get('p-delay'); txt('v-delay', p.delay + '%');
+        p.verb = get('p-verb'); txt('v-verb', p.verb + '%');
+        
+        // New UI Params
+        p.dist = get('p-dist'); txt('v-dist', p.dist);
+        p.glitch = get('p-glitch'); txt('v-glitch', p.glitch + '%');
+
+        if(actx) {
+            if(filterNode) {
+                filterNode.frequency.setTargetAtTime(p.cut, actx.currentTime, 0.1);
+                filterNode.Q.value = p.res;
+            }
+            if(delayWet) delayWet.gain.setTargetAtTime(p.delay/100, actx.currentTime, 0.1);
+            if(verbGain) verbGain.gain.setTargetAtTime(p.verb/100, actx.currentTime, 0.1);
+            if(subGain) subGain.gain.setTargetAtTime(p.sub/200, actx.currentTime, 0.1);
+            
+            // Update Dist Curve
+            if(distNode) distNode.curve = makeDistortionCurve(p.dist * 5); // Amplify scale
+        }
+    }
+
+    document.querySelectorAll('input').forEach(el => el.addEventListener('input', updateUI));
+
+
+    // --- VISUAL LOOP WITH ANIMATION ---
+    const dataArray = new Uint8Array(256);
+
+    function drawLoop() {
+        const canvas = document.getElementById('waveCanvas');
+        const ctx = canvas.getContext('2d');
+        const w = canvas.offsetWidth;
+        const h = canvas.offsetHeight;
+        canvas.width = w; canvas.height = h;
+
+        // 1. Calculate Shake Amount based on Audio Volume
+        let shakeX = 0;
+        let shakeY = 0;
+        let invert = false;
+
+        if (analyser) {
+            analyser.getByteTimeDomainData(dataArray);
+            let sum = 0;
+            for(let i = 0; i < dataArray.length; i++) sum += Math.abs(dataArray[i] - 128);
+            const avg = sum / dataArray.length;
+
+            // If loud or distorted, shake
+            if(avg > 2 || p.dist > 20) {
+                const intensity = (avg / 5) * (1 + p.dist/20);
+                shakeX = (Math.random() - 0.5) * intensity;
+                shakeY = (Math.random() - 0.5) * intensity;
+            }
+            // If glitching (random check purely for visual sync feel)
+            if(p.glitch > 0 && Math.random() * 100 < (p.glitch/2)) {
+                shakeX += (Math.random()-0.5) * 10;
+                invert = true;
+            }
+        }
+
+        ctx.save();
+        // Apply Shake
+        ctx.translate(shakeX, shakeY);
+        
+        if(invert) {
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(-10, -10, w+20, h+20);
+            ctx.strokeStyle = "#000000";
+        } else {
+            ctx.fillStyle = "#050505";
+            ctx.fillRect(-10, -10, w+20, h+20);
+            ctx.strokeStyle = "#444";
+        }
+
+        if(mainBuffer) {
+            const data = mainBuffer.getChannelData(0);
+            const step = Math.ceil(data.length / w);
+            const amp = h/2;
+            
+            ctx.beginPath();
+            for(let i=0; i<w; i++) {
+                let min=1.0, max=-1.0;
+                for(let j=0; j<step; j++) {
+                    const val = data[(i*step)+j];
+                    if(val<min) min=val;
+                    if(val>max) max=val;
+                }
+                ctx.moveTo(i, (1+min)*amp);
+                ctx.lineTo(i, (1+max)*amp);
+            }
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // Scanner
+        const scanEl = document.getElementById('scanner');
+        let lfo = Math.sin(Date.now()/1000) * (p.lfo/100) * 0.1;
+        let x = scanPos + lfo;
+        if(x>1) x-=1; if(x<0) x+=1;
+        scanEl.style.left = (x*100) + '%';
+        // Scanner Glitch Visual
+        if(invert) scanEl.style.background = "#000"; else scanEl.style.background = "#fff";
+
+        requestAnimationFrame(drawLoop);
+    }
+
+    // --- UTILS & RECORDING (Same as before) ---
+    function toggleRec() {
+        const btn = document.getElementById('btn-rec');
+        if(!isRecording) {
+            recLeft = []; recRight = []; recLength = 0;
+            isRecording = true;
+            btn.innerText = "STOP & SAVE";
+            btn.classList.add('rec-active');
+        } else {
+            isRecording = false;
+            btn.innerText = "SAVING...";
+            btn.classList.remove('rec-active');
+            setTimeout(saveWav, 100);
+        }
+    }
+    function saveWav() {
+        if (recLength === 0) { document.getElementById('btn-rec').innerText = "● RECORD"; return; }
+        const buffer = flattenBuffers(recLeft, recRight, recLength);
+        const dataview = encodeWAV(buffer, actx.sampleRate);
+        const blob = new Blob([dataview], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'granular_chaos.wav'; a.click();
+        document.getElementById('btn-rec').innerText = "● RECORD";
+    }
+    function flattenBuffers(left, right, len) {
+        const result = new Float32Array(len * 2);
+        let offset = 0;
+        for (let i = 0; i < left.length; i++) {
+            const l = left[i]; const r = right[i];
+            for (let j = 0; j < l.length; j++) { result[offset++] = l[j]; result[offset++] = r[j]; }
+        }
+        return result;
+    }
+    function encodeWAV(samples, sampleRate) {
+        const buffer = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(buffer);
+        writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true);
+        writeString(view, 8, 'WAVE'); writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 2, true);
+        view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 4, true);
+        view.setUint16(32, 4, true); view.setUint16(34, 16, true);
+        writeString(view, 36, 'data'); view.setUint32(40, samples.length * 2, true);
+        let offset = 44;
+        for (let i = 0; i < samples.length; i++) {
+            let s = Math.max(-1, Math.min(1, samples[i]));
+            s = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            view.setInt16(offset, s, true); offset += 2;
+        }
+        return view;
+    }
+    function writeString(view, offset, string) {
+        for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
+    }
+    function togglePlay() {
+        if(!actx) initSystem();
+        isPlaying = !isPlaying;
+        document.getElementById('btn-play').classList.toggle('active');
+    }
+    function toggleScale() {
+        useScale = !useScale;
+        document.getElementById('btn-scale').innerText = useScale ? "SCALE: ON" : "SCALE: OFF";
+        document.getElementById('btn-scale').classList.toggle('active');
+    }
+    function setPos(e) {
+        const rect = e.target.closest('.canvas-wrapper').getBoundingClientRect();
+        scanPos = (e.clientX - rect.left) / rect.width;
+    }
+    const dropArea = document.getElementById('drop-area');
+    dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.style.opacity = 0.5; });
+    dropArea.addEventListener('dragleave', e => { e.preventDefault(); dropArea.style.opacity = 1; });
+    dropArea.addEventListener('drop', e => { e.preventDefault(); dropArea.style.opacity = 1; loadFile(e.dataTransfer.files[0]); });
+    document.getElementById('fileInput').addEventListener('change', e => loadFile(e.target.files[0]));
+    async function loadFile(file) {
+        if(!file) return;
+        if(!actx) await initSystem();
+        const ab = await file.arrayBuffer();
+        mainBuffer = await actx.decodeAudioData(ab);
+        document.querySelector('.wrapper').classList.add('has-file');
+    }
+    function createNoiseBuffer() {
+        const sr = actx.sampleRate;
+        const b = actx.createBuffer(2, sr*2, sr);
+        for(let c=0; c<2; c++) {
+            const d = b.getChannelData(c);
+            for(let i=0; i<d.length; i++) d[i] = (Math.random()-0.5)*0.2;
+        }
+        mainBuffer = b;
+    }
+    function createImpulse(sec) {
+        const sr = actx.sampleRate;
+        const len = sr*sec;
+        const b = actx.createBuffer(2, len, sr);
+        for(let c=0; c<2; c++) {
+            const d = b.getChannelData(c);
+            for(let i=0; i<len; i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/len, 4);
+        }
+        return b;
+    }
+</script>
+</body>
+</html>
